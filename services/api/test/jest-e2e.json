@@ -1,0 +1,25 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "@swc/jest",
+      {
+        "module": { "type": "commonjs" },
+        "jsc": {
+          "parser": { "syntax": "typescript", "decorators": true },
+          "transform": { "legacyDecorator": true, "decoratorMetadata": true },
+          "target": "es2022"
+        }
+      }
+    ]
+  },
+  "moduleNameMapper": {
+    "^@node-rs/argon2$": "<rootDir>/__mocks__/argon2.js",
+    "^@prisma/client$": "<rootDir>/__mocks__/prisma-client.js",
+    "^@prisma/adapter-pg$": "<rootDir>/__mocks__/prisma-pg.js"
+  },
+  "transformIgnorePatterns": ["node_modules/(?!(@nestjs|reflect-metadata|@node-rs|@prisma)/)"]
+}

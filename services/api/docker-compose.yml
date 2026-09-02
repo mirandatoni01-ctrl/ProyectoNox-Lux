@@ -1,0 +1,28 @@
+# NOX & LUX API — PostgreSQL local (desarrollo)
+# NL-04: BD de desarrollo reproducible con Docker.
+# Uso:  docker compose up -d
+#       npm run prisma:migrate  (crea esquema)
+#       npm run prisma:seed     (catálogo + roles/permisos)
+# Ver docs/03-architecture/DATA_MODEL.md y ADR-NL-005.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: nox-lux-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nox_lux
+      POSTGRES_PASSWORD: nox_lux_dev
+      POSTGRES_DB: nox_lux
+    ports:
+      - '5432:5432'
+    volumes:
+      - nox_lux_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nox_lux -d nox_lux']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  nox_lux_pgdata:

@@ -1,0 +1,334 @@
+// NOX & LUX API — Prisma schema (NL-04).
+// Modelo objetivo del backend (PostgreSQL) según DATA_MODEL.md y ADR-NL-005.
+// Prisma 7: la URL de conexión NO va en el schema; se define en
+// `services/api/prisma.config.ts` (env DATABASE_URL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Material {
+  STAINLESS_STEEL
+  COVERGOLD
+  RHODIUM
+}
+
+enum Category {
+  anillos
+  cadenas
+  aretes
+  pulseras
+}
+
+enum VariantStatus {
+  active
+  hidden
+  archived
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  ADMIN
+  CUSTOMER
+}
+
+enum StockMovementType {
+  initial
+  set
+  adjust
+  reserve
+  release
+}
+
+// ---------------------------------------------------------------------------
+// RBAC (detalle en SECURITY_MODEL.md; funcional en NL-05)
+// ---------------------------------------------------------------------------
+
+model User {
+  id                    String   @id @default(uuid()) @db.Uuid
+  email                 String   @unique
+  passwordHash          String   @map("password_hash")
+  fullName              String?  @map("full_name")
+  phone                 String?
+  provider              String?  @map("provider")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  roles                 UserRole[]
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  orders                Order[]
+  contactTickets        ContactTicket[]
+}
+
+model Role {
+  id                    String            @id @default(uuid()) @db.Uuid
+  code                  RoleCode          @unique
+  name                  String
+  description           String?
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  users                 UserRole[]
+  permissions           RolePermission[]
+}
+
+model Permission {
+  id                    String            @id @default(uuid()) @db.Uuid
+  code                  String            @unique
+  name                  String
+  description           String?
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles                 RolePermission[]
+}
+
+model UserRole {
+  userId                String            @map("user_id") @db.Uuid
+  roleId                String            @map("role_id") @db.Uuid
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                  Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId                String            @map("role_id") @db.Uuid
+  permissionId          String            @map("permission_id") @db.Uuid
+  role                  Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission            Permission        @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo
+// ---------------------------------------------------------------------------
+
+model Product {
+  id                    String            @id @default(uuid()) @db.Uuid
+  name                  String
+  slug                  String            @unique
+  category              Category
+  description           String
+  isActive              Boolean           @default(true) @map("is_active")
+  basePrice             Decimal           @map("base_price") @db.Decimal(12, 2)
+  materialDefault       Material          @map("material_default")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  variants              ProductVariant[]
+  images                ProductImage[]
+}
+
+model ProductVariant {
+  id                    String            @id @default(uuid()) @db.Uuid
+  productId             String            @map("product_id") @db.Uuid
+  sku                   String            @unique
+  material              Material
+  size                  String
+  priceOverride         Decimal?          @map("price_override") @db.Decimal(12, 2)
+  status                VariantStatus     @default(active)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product               Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory             Inventory?
+  orderItems            OrderItem[]
+  stockMovements        StockMovement[]
+
+  @@index([productId])
+}
+
+model ProductImage {
+  id                    String            @id @default(uuid()) @db.Uuid
+  productId             String            @map("product_id") @db.Uuid
+  url                   String
+  alt                   String?
+  position              Int               @default(0)
+  isPrimary             Boolean           @default(false) @map("is_primary")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product               Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Inventario
+// ---------------------------------------------------------------------------
+
+model Inventory {
+  id                    String            @id @default(uuid()) @db.Uuid
+  productVariantId      String            @unique @map("product_variant_id") @db.Uuid
+  stockOnHand           Int               @map("stock_on_hand")
+  reserved              Int               @default(0)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  productVariant        ProductVariant    @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+}
+
+// Ledger de movimientos de stock (NL-08). Cada cambio de stockOnHand queda
+// registrado aquí; `ref_type`/`ref_id` reservarán referencias (p.ej. pedidos,
+// NL-10). available = stockOnHand - reserved (derivado, DATA_MODEL.md).
+model StockMovement {
+  id                    String            @id @default(uuid()) @db.Uuid
+  productVariantId      String            @map("product_variant_id") @db.Uuid
+  type                  StockMovementType
+  delta                 Int
+  stockBefore           Int               @map("stock_before")
+  stockAfter            Int               @map("stock_after")
+  reason                String?
+  refType               String?           @map("ref_type")
+  refId                 String?           @map("ref_id")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  productVariant        ProductVariant    @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+
+  @@index([productVariantId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Clientes (dueño del API; ver SYSTEM_BOUNDARIES.md)
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id                    String            @id @default(uuid()) @db.Uuid
+  name                  String
+  phone                 String
+  email                 String?
+  notes                 String?
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  orders                Order[]
+
+  @@index([phone])
+}
+
+// ---------------------------------------------------------------------------
+// Pedidos
+// ---------------------------------------------------------------------------
+
+model Order {
+  id                    String            @id @default(uuid()) @db.Uuid
+  customerId            String?           @map("customer_id") @db.Uuid
+  userId                String?           @map("user_id") @db.Uuid
+  status                OrderStatus       @default(pending)
+  totalAmount           Decimal           @map("total_amount") @db.Decimal(12, 2)
+  whatsappPhone         String            @map("whatsapp_phone")
+  source                String            @default("store")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer              Customer?         @relation(fields: [customerId], references: [id])
+  user                  User?             @relation(fields: [userId], references: [id])
+  items                 OrderItem[]
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id                    String            @id @default(uuid()) @db.Uuid
+  orderId               String            @map("order_id") @db.Uuid
+  productVariantId      String            @map("product_variant_id") @db.Uuid
+  quantity              Int
+  unitPrice             Decimal           @map("unit_price") @db.Decimal(12, 2)
+  lineTotal             Decimal           @map("line_total") @db.Decimal(12, 2)
+
+  order                 Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant        ProductVariant    @relation(fields: [productVariantId], references: [id])
+
+  @@index([orderId])
+  @@index([productVariantId])
+}
+
+// ---------------------------------------------------------------------------
+// Tickets de Contact Us (Contact Us del perfil de comprador, NL-13)
+// ---------------------------------------------------------------------------
+
+enum TicketStatus {
+  new
+  in_progress
+  resolved
+  closed
+}
+
+model ContactTicket {
+  id                    String        @id @default(uuid()) @db.Uuid
+  userId                String?       @map("user_id") @db.Uuid
+  name                  String
+  email                 String
+  phone                 String?        @map("phone")
+  subject               String
+  message               String
+  status                TicketStatus  @default(new)
+  adminNote             String?        @map("admin_note")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user                  User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Auditoría
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id                    String            @id @default(uuid()) @db.Uuid
+  actorUserId           String?           @map("actor_user_id") @db.Uuid
+  action                String
+  entity                String
+  entityId              String            @map("entity_id")
+  metadata              Json?
+  ip                    String?
+  userAgent             String?           @map("user_agent")
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actorUser             User?             @relation(fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Sesión: refresh tokens (NL-05, ADR-NL-018)
+// ---------------------------------------------------------------------------
+
+model RefreshToken {
+  id                    String            @id @default(uuid()) @db.Uuid
+  userId                String            @map("user_id") @db.Uuid
+  tokenHash             String            @unique @map("token_hash")
+  expiresAt             DateTime          @map("expires_at") @db.Timestamptz(6)
+  revokedAt             DateTime?         @map("revoked_at") @db.Timestamptz(6)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}

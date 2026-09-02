@@ -1,0 +1,35 @@
+{
+  "name": "nox-lux",
+  "private": true,
+  "version": "0.13.0",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:store": "npm run dev --workspace @nox-lux/store",
+    "dev:admin": "npm run dev --workspace @nox-lux/admin",
+    "build:store": "npm run build --workspace @nox-lux/store",
+    "build:admin": "npm run build --workspace @nox-lux/admin",
+    "lint": "oxlint apps services packages",
+    "test": "npm run test:run --workspaces --if-present",
+    "test:store": "npm run test:run --workspace @nox-lux/store",
+    "test:admin": "npm run test:run --workspace @nox-lux/admin",
+    "test:api": "npm run test:run --workspace @nox-lux/api",
+    "dev:api": "npm run start:dev --workspace @nox-lux/api"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0"
+    }
+  },
+  "devDependencies": {
+    "oxlint": "^1.79.0",
+    "typescript": "~6.0.2"
+  },
+  "dependencies": {
+    "@prisma/config": "^7.10.0"
+  },
+  "allowScripts": {}
+}
