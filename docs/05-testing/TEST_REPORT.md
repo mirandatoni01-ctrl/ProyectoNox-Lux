@@ -13,6 +13,7 @@
 | **Cobertura API** | ✅ **88.34% statements · 71.15% branches · 89.04% functions · 88.57% lines** (umbrales 80/70/80/80) |
 | Lint (oxlint) | ✅ API + Admin + Store limpios (Store sin errores; avisos fast-refresh/set-state-in-effect) |
 | Builds | ✅ Admin (`tsc -b && vite build` + CSP), API (`nest build`), Store (`tsc -b && vite build` + CSP) |
+| Audit (`npm audit`) | ✅ **0 vulnerabilidades** (raíz, tras fijar `qs`→6.16.0 y eliminar el engine MySQL no usado `mysql2` de `prisma@7`) |
 
 ## Verificación NL-13 — Cuentas de comprador + soporte (unitarios + e2e en vivo)
 
